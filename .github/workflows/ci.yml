@@ -1,0 +1,98 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ─── Tests ────────────────────────────────────────────────────────────────
+  test:
+    name: Tests y Cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('tests/requirements-test.txt') }}
+
+      - name: Instalar dependencias de test
+        run: pip install -r tests/requirements-test.txt
+
+      - name: Ejecutar tests backend (MySQL mockeado)
+        run: pytest tests/test_backend.py -v --tb=short
+
+      - name: Ejecutar tests frontend (backend mockeado)
+        run: pytest tests/test_frontend.py -v --tb=short
+
+      - name: Cobertura completa
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=backend --cov=frontend \
+            --cov-report=xml --cov-report=term-missing
+
+      - name: Subir cobertura a Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ─── Análisis de seguridad estático ───────────────────────────────────────
+  security:
+    name: Análisis de Seguridad (Bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar Bandit
+        run: pip install bandit
+      - name: Scan backend
+        run: bandit -r backend/ -f txt -ll || true
+      - name: Scan frontend
+        run: bandit -r frontend/ -f txt -ll || true
+
+  # ─── Build Docker ─────────────────────────────────────────────────────────
+  docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend
+        run: docker build -t secureapp-backend:${{ github.sha }} ./backend
+
+      - name: Build frontend
+        run: docker build -t secureapp-frontend:${{ github.sha }} ./frontend
+
+      - name: Test con docker compose (smoke test)
+        run: |
+          cp .env.example .env
+          docker compose up -d
+          sleep 30
+          curl -f http://localhost:5000/login || exit 1
+          docker compose down -v
+
+  # ─── Deploy (solo rama main) ──────────────────────────────────────────────
+  deploy:
+    name: Deploy a Producción
+    runs-on: ubuntu-latest
+    needs: [test, docker, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: echo "Aquí iría el deploy al servidor de producción"

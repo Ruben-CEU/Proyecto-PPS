@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Admin — SecureApp{% endblock %}
+{% block header_title %}⚡ SecureApp — Panel Admin{% endblock %}
+
+{% block extra_style %}
+<style>
+:root { --primary:#7c3aed; --bg:#f5f3ff; --header-bg:#4c1d95; --badge-bg:#7c3aed; }
+.section-title { font-size:1rem; font-weight:700; color:#4c1d95; margin-bottom:1rem; }
+.back-link { color:#7c3aed; text-decoration:none; font-size:.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem">
+    <a href="{{ url_for('dashboard') }}" class="back-link">← Dashboard</a>
+    <h2 style="color:#4c1d95;font-size:1.3rem">⚙️ Panel de Administración</h2>
+</div>
+
+<!-- Estadísticas globales desde MySQL -->
+{% if stats %}
+<div class="grid-4">
+    <div class="stat-card"><div class="num">{{ stats.users }}</div><div class="label">Usuarios</div></div>
+    <div class="stat-card"><div class="num">{{ stats.projects }}</div><div class="label">Proyectos</div></div>
+    <div class="stat-card"><div class="num">{{ stats.audit_log_entries }}</div><div class="label">Eventos log</div></div>
+    <div class="stat-card" style="{% if stats.failed_logins_1h > 3 %}border-left:4px solid #ef4444{% endif %}">
+        <div class="num" style="{% if stats.failed_logins_1h > 3 %}color:#ef4444{% endif %}">{{ stats.failed_logins_1h }}</div>
+        <div class="label">Fallos login (1h)</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Gestión de usuarios -->
+<div class="card">
+    <div class="section-title">👥 Usuarios del sistema ({{ users | length }})</div>
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Acción</th></tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+        <tr>
+            <td style="color:#94a3b8">#{{ u.id }}</td>
+            <td><strong>{{ u.username }}</strong></td>
+            <td><span class="tag tag-{{ u.role }}">{{ u.role | upper }}</span></td>
+            <td>
+                <span class="tag {{ 'tag-on' if u.active else 'tag-off' }}">
+                    {{ 'Activo' if u.active else 'Inactivo' }}
+                </span>
+            </td>
+            <td style="color:#94a3b8;font-size:.8rem">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+            <td>
+                {% if u.username != session.username %}
+                <form method="POST" action="{{ url_for('toggle_user', user_id=u.id) }}" style="display:inline">
+                    <button type="submit" class="btn btn-sm {{ 'btn-danger' if u.active else 'btn-success' }}">
+                        {{ 'Desactivar' if u.active else 'Activar' }}
+                    </button>
+                </form>
+                {% else %}
+                <span style="color:#94a3b8;font-size:.8rem">(tú)</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Log de auditoría desde MySQL -->
+<div class="card">
+    <div class="section-title">📜 Log de auditoría — últimas 100 entradas</div>
+    <table>
+        <thead>
+            <tr><th>Timestamp</th><th>Usuario</th><th>Acción</th><th>IP</th><th>Detalle</th></tr>
+        </thead>
+        <tbody>
+        {% for log in logs %}
+        <tr>
+            <td style="font-size:.78rem;color:#94a3b8;white-space:nowrap">{{ log.created_at }}</td>
+            <td>{{ log.username or '—' }}</td>
+            <td>
+                {% if 'failed' in (log.action or '') or 'blocked' in (log.action or '') or 'limited' in (log.action or '') %}
+                <span style="color:#dc2626">✗ {{ log.action }}</span>
+                {% else %}
+                <span style="color:#16a34a">✓ {{ log.action }}</span>
+                {% endif %}
+            </td>
+            <td style="font-size:.78rem;color:#94a3b8">{{ log.ip or '—' }}</td>
+            <td style="font-size:.78rem;color:#64748b">{{ log.detail or '' }}</td>
+        </tr>
+        {% endfor %}
+        {% if not logs %}
+        <tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:1.5rem">Sin registros aún</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
