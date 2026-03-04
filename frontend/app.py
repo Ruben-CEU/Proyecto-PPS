@@ -247,6 +247,96 @@ def new_project():
                            role=session.get("role"))
 
 
+
+
+# =============================================================================
+# RUTAS PROXY API — Para Postman y clientes externos
+# Redirigen las llamadas al backend interno y devuelven JSON directamente
+# =============================================================================
+
+from flask import jsonify
+
+@app.route("/api/health")
+def proxy_health():
+    resp = call_backend("get", "/api/health")
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/login", methods=["POST"])
+def proxy_login():
+    resp = call_backend("post", "/api/login",
+                        json=request.get_json(),
+                        headers={"Content-Type": "application/json"})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/profile")
+def proxy_profile():
+    auth = request.headers.get("Authorization")
+    resp = call_backend("get", "/api/profile",
+                        headers={"Authorization": auth} if auth else {})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/projects", methods=["GET", "POST"])
+def proxy_projects():
+    auth = request.headers.get("Authorization")
+    headers = {"Authorization": auth} if auth else {}
+    if request.method == "POST":
+        resp = call_backend("post", "/api/projects",
+                            json=request.get_json(), headers=headers)
+    else:
+        resp = call_backend("get", "/api/projects", headers=headers)
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/admin/users")
+def proxy_admin_users():
+    auth = request.headers.get("Authorization")
+    resp = call_backend("get", "/api/admin/users",
+                        headers={"Authorization": auth} if auth else {})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/admin/users/<int:user_id>/toggle", methods=["POST"])
+def proxy_toggle_user(user_id):
+    auth = request.headers.get("Authorization")
+    resp = call_backend("post", f"/api/admin/users/{user_id}/toggle",
+                        headers={"Authorization": auth} if auth else {})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/admin/logs")
+def proxy_admin_logs():
+    auth = request.headers.get("Authorization")
+    resp = call_backend("get", "/api/admin/logs",
+                        headers={"Authorization": auth} if auth else {})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
+
+@app.route("/api/admin/stats")
+def proxy_admin_stats():
+    auth = request.headers.get("Authorization")
+    resp = call_backend("get", "/api/admin/stats",
+                        headers={"Authorization": auth} if auth else {})
+    if resp is None:
+        return jsonify({"error": "Backend no disponible"}), 503
+    return resp.content, resp.status_code, {"Content-Type": "application/json"}
+
 # =============================================================================
 # CABECERAS DE SEGURIDAD
 # =============================================================================
