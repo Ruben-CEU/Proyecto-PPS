@@ -1,21 +1,33 @@
 """
 conftest.py — Configuración automática de pytest.
-Añade backend/ y frontend/ al sys.path para que los tests
-puedan importar 'app' tanto en local como en GitHub Actions.
+Añade backend/ al sys.path ANTES que frontend/ para que
+"import app" resuelva siempre al backend, no al frontend.
 """
 import os
 import sys
 
-# Raíz del proyecto (un nivel arriba de tests/)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Añadir backend y frontend al path
+# IMPORTANTE: backend primero, luego frontend
+# Si frontend va primero, "import app" importa frontend/app.py
 for folder in ("backend", "frontend"):
     path = os.path.join(ROOT, folder)
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# Variables de entorno por defecto para tests (si no están ya definidas)
+# Reordenar para garantizar que backend está ANTES que frontend
+backend_path  = os.path.join(ROOT, "backend")
+frontend_path = os.path.join(ROOT, "frontend")
+
+# Eliminar ambos si existen y reinsertarlos en orden correcto
+for p in [backend_path, frontend_path]:
+    if p in sys.path:
+        sys.path.remove(p)
+
+sys.path.insert(0, frontend_path)  # frontend al fondo
+sys.path.insert(0, backend_path)   # backend al principio → gana
+
+# Variables de entorno por defecto para tests
 defaults = {
     "SECRET_KEY":     "ci-test-secret-key-32bytes-xxxxx",
     "MYSQL_HOST":     "localhost",
