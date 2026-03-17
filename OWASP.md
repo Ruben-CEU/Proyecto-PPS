@@ -1,50 +1,52 @@
 # OWASP Top 10 — 2025 🔐
 
-**Análisis de Seguridad — SecureApp**
-
-> Aplicación Web y API · Versión 2.0 · Marzo 2026
+**Análisis de Seguridad · SecureApp · Proyecto PPS · CEU · Marzo 2026**
 
 ---
 
-## Introducción
+## Resumen ejecutivo
 
-Este documento analiza la implementación del OWASP Top 10 2025 en SecureApp, cubriendo tanto la perspectiva de aplicación web como la de APIs. Para cada categoría se describe el riesgo, las medidas implementadas y el fichero exacto donde verificarlo.
-
-**Estado general: todos los puntos del Top 10 están cubiertos.**
+Este documento analiza la cobertura del OWASP Top 10 2025 en SecureApp desde dos perspectivas: aplicación web y API REST. Para cada categoría se detalla el riesgo, las medidas implementadas con referencias exactas al código, y los tests automatizados que las verifican.
 
 | # | Categoría | Estado |
 |---|-----------|--------|
-| A01 | Broken Access Control | ✅ Cubierto |
-| A02 | Cryptographic Failures | ✅ Cubierto |
-| A03 | Injection | ✅ Cubierto |
-| A04 | Insecure Design | ✅ Cubierto |
-| A05 | Security Misconfiguration | ✅ Cubierto |
-| A06 | Vulnerable and Outdated Components | ✅ Cubierto |
-| A07 | Identification and Authentication Failures | ✅ Cubierto |
-| A08 | Software and Data Integrity Failures | ✅ Cubierto |
-| A09 | Security Logging and Monitoring Failures | ✅ Cubierto |
-| A10 | Server-Side Request Forgery (SSRF) | ✅ Cubierto |
+| A01 | Broken Access Control | ✅ Implementado |
+| A02 | Cryptographic Failures | ✅ Implementado |
+| A03 | Injection | ✅ Implementado |
+| A04 | Insecure Design | ✅ Implementado |
+| A05 | Security Misconfiguration | ✅ Implementado |
+| A06 | Vulnerable and Outdated Components | ✅ Implementado |
+| A07 | Identification and Authentication Failures | ✅ Implementado |
+| A08 | Software and Data Integrity Failures | ✅ Implementado |
+| A09 | Security Logging and Monitoring Failures | ✅ Implementado |
+| A10 | Server-Side Request Forgery (SSRF) | ✅ Implementado |
 
 ---
 
-## A01:2025 — Broken Access Control
+## A01 — Broken Access Control
 
-### Descripción del riesgo
-El control de acceso fuerza políticas para que los usuarios no puedan actuar fuera de sus permisos. Las vulnerabilidades llevan a acceso no autorizado a datos o funcionalidades.
+### Riesgo
+Sin controles de acceso adecuados, los usuarios pueden actuar fuera de sus permisos: acceder a datos ajenos, ejecutar funciones restringidas o escalar privilegios.
 
-### Medidas implementadas
+### Implementación
 
-**Fichero:** `backend/app.py` — funciones `token_required` y `admin_required`
+**Fichero:** `backend/app.py`
 
-- `@token_required`: verifica JWT válido en cada endpoint protegido. Sin token o token inválido → 401.
-- `@admin_required`: verifica JWT válido Y `role == 'admin'`. Usuario normal en ruta admin → 403.
-- **Doble verificación:** el frontend comprueba `session['role']` antes de llamar al backend. El backend verifica el rol del JWT independientemente.
-- Columna `active` en tabla `users`: permite desactivar usuarios sin borrarlos.
-- Endpoint `POST /api/projects` exclusivo de admin. Usuario normal obtiene 403 aunque tenga JWT válido.
+El sistema implementa dos niveles de control mediante decoradores de Flask:
 
 ```python
-# backend/app.py
+def token_required(f):
+    """Exige JWT válido. Sin token o token inválido → 401."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        payload = verify_token(token)   # lanza excepción si inválido
+        request.current_user = payload
+        return f(*args, **kwargs)
+    return decorated
+
 def admin_required(f):
+    """Exige JWT válido Y role == 'admin'. Usuario normal → 403."""
     @wraps(f)
     @token_required
     def decorated(*args, **kwargs):
@@ -54,273 +56,335 @@ def admin_required(f):
     return decorated
 ```
 
-### Tests que verifican esto
-- `test_admin_users_blocked_for_user` → user token devuelve 403
-- `test_admin_users_accessible_for_admin` → admin token devuelve 200
-- `test_create_project_user_forbidden` → user en POST /api/projects → 403
+Medidas adicionales:
+- **Doble verificación de rol:** el frontend comprueba `session['role']` antes de llamar al backend, y el backend verifica el JWT independientemente. Un atacante no puede saltarse la verificación del backend.
+- **Control de estado de cuenta:** columna `active` en la tabla `users`. Un usuario desactivado no puede autenticarse aunque su contraseña sea correcta.
+- **Separación de endpoints:** `POST /api/projects` y todos los endpoints `/api/admin/*` requieren `@admin_required`. Un usuario con rol `user` y JWT válido obtiene 403.
+
+### Tests que verifican este control
+- `test_admin_users_blocked_for_user` → token de usuario → 403
+- `test_admin_users_accessible_for_admin` → token de admin → 200
+- `TestProjectsPOST::test_post_project_user_forbidden` → POST proyectos con token user → 403
+- `TestToggleUserPOST::test_toggle_by_user_role_returns_403` → toggle con token user → 403
 
 ---
 
-## A02:2025 — Cryptographic Failures
+## A02 — Cryptographic Failures
 
-### Descripción del riesgo
-Fallos en criptografía o su ausencia exponen datos sensibles. Incluye contraseñas mal protegidas, algoritmos débiles y secretos hardcodeados.
+### Riesgo
+El uso de algoritmos criptográficos débiles, contraseñas almacenadas en texto plano o secretos hardcodeados en el código expone datos sensibles ante un atacante que acceda a la base de datos o al repositorio.
 
-### Medidas implementadas
+### Implementación
 
-**Fichero:** `backend/app.py` — funciones `hash_password`, `create_token`
+**Fichero:** `backend/app.py`
 
-- **bcrypt con rounds=12**: genera ~250ms por hash. GPU brute-force inviable. (SHA-256 sin coste: ~10B hash/s; bcrypt rounds=12: ~10K hash/s)
-- Salt aleatorio automático en cada `bcrypt.hashpw`. Dos hashes del mismo texto son distintos.
-- La columna `password_hash` de MySQL nunca contiene la contraseña en texto plano.
-- Los endpoints admin nunca devuelven `password_hash` en las respuestas JSON.
-- JWT con algoritmo HS256. Token expira en 1 hora.
-- `SECRET_KEY` de 32 bytes aleatorios con `secrets.token_hex(32)` si no se define en entorno.
-- Secretos en variables de entorno. `.env` está en `.gitignore`.
-
+**Hashing de contraseñas con bcrypt:**
 ```python
-# backend/app.py
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(
         password.encode("utf-8"),
-        bcrypt.gensalt(rounds=12)   # salt aleatorio, factor de coste 12
+        bcrypt.gensalt(rounds=12)  # salt único por hash, factor de coste 12
     ).decode("utf-8")
-
-SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))  # nunca hardcodeado
 ```
 
-### Tests que verifican esto
-- `TestBcrypt.test_hash_is_not_plaintext`
-- `TestBcrypt.test_two_hashes_of_same_password_differ`
-- `TestBcrypt.test_verify_correct_password` / `test_verify_wrong_password`
+- `rounds=12` genera ~250ms por operación de hash, haciendo inviable el ataque de fuerza bruta por GPU.
+- Cada llamada genera un salt aleatorio: dos hashes del mismo texto son siempre distintos.
+- La columna `password_hash` de MySQL nunca contiene texto plano ni hashes reversibles.
+
+**Tokens JWT seguros:**
+- Algoritmo HS256 con `SECRET_KEY` de 32 bytes aleatorios.
+- Expiración de 1 hora en el campo `exp`.
+- `SECRET_KEY` obtenida de variable de entorno, con `secrets.token_hex(32)` como fallback.
+
+**Gestión de secretos:**
+```python
+SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
+```
+- Todos los secretos (`SECRET_KEY`, `MYSQL_PASSWORD`, `FLASK_SECRET_KEY`) se definen en `.env`.
+- El fichero `.env` está excluido del repositorio en `.gitignore`.
+- Los endpoints de administración nunca incluyen el campo `password_hash` en las respuestas JSON.
+
+### Tests que verifican este control
+- `TestBcrypt::test_hash_not_plaintext` → el hash no es la contraseña
+- `TestBcrypt::test_two_hashes_differ` → mismo input, hashes distintos (salt aleatorio)
+- `TestBcrypt::test_verify_correct` / `test_verify_wrong` → verificación correcta
+- `TestJWT::test_tampered_signature_raises` → firma manipulada → excepción
 
 ---
 
-## A03:2025 — Injection
+## A03 — Injection
 
-### Descripción del riesgo
-SQL Injection ocurre cuando datos no confiables se envían a un intérprete como parte de un comando o consulta.
+### Riesgo
+La inyección SQL ocurre cuando datos del usuario se incluyen directamente en una consulta sin sanitización, permitiendo al atacante modificar la lógica de la query y acceder o destruir datos.
 
-### Medidas implementadas
+### Implementación
 
-**Fichero:** `backend/app.py` — todas las funciones con `get_db`
+**Fichero:** `backend/app.py`
 
-- **Nunca** se construye SQL concatenando strings. Se usa siempre `%s` como placeholder.
-- `mysql-connector-python` gestiona el escape automáticamente.
-- Inputs del usuario truncados antes de usarse (`username[:64]`, `password[:128]`).
-- Jinja2 aplica auto-escaping en todos los templates HTML. `{{ variable }}` escapa caracteres peligrosos.
-- `Content-Security-Policy: default-src 'self'` impide cargar scripts de orígenes externos.
-
+**Todas las consultas son parametrizadas — sin excepción:**
 ```python
-# backend/app.py — CORRECTO: query parametrizada
+# CORRECTO — parámetro separado del SQL
 cursor.execute(
     "SELECT id, username, password_hash, role, active "
     "FROM users WHERE username = %s",
-    (username,)   # parámetro separado, nunca en el string SQL
+    (username,)
 )
 
-# INCORRECTO (nunca se hace):
+# NUNCA se hace esto:
 # cursor.execute(f"SELECT * FROM users WHERE username = '{username}'")  # VULNERABLE
 ```
 
+El driver `mysql-connector-python` escapa automáticamente los parámetros, haciendo imposible la inyección independientemente del contenido del input.
+
+Medidas complementarias:
+- Inputs truncados antes de usarse: `username[:64]`, `password[:128]`.
+- Jinja2 aplica auto-escaping en todos los templates: `{{ variable }}` escapa `<`, `>`, `"`, `'` automáticamente, previniendo XSS reflejado.
+- `Content-Security-Policy: default-src 'self'` bloquea la carga de scripts externos, como segunda línea de defensa contra XSS.
+
 ---
 
-## A04:2025 — Insecure Design
+## A04 — Insecure Design
 
-### Descripción del riesgo
-Riesgos relacionados con fallos de diseño: arquitectura insegura, falta de modelos de amenazas, patrones inseguros.
+### Riesgo
+Una arquitectura con decisiones de diseño inseguras crea vulnerabilidades estructurales difíciles de corregir a posteriori: superficies de ataque innecesarias, ausencia de límites de confianza o falta de defensa en profundidad.
 
-### Medidas implementadas
+### Implementación
 
 **Fichero:** `docker-compose.yml`
 
-- **Red Docker segregada:** Backend NO expuesto al exterior. MySQL NO expuesto al exterior.
-- Solo el frontend (puerto 5000) es accesible desde el host.
-- Pool de conexiones MySQL con `pool_size=5`. Previene agotamiento de conexiones.
-- `timeout=8s` en llamadas HTTP del frontend al backend.
-- Inputs truncados: `username` máx 64 chars, `password` máx 128 chars.
-- El frontend no tiene acceso directo a MySQL. Toda operación pasa por la API del backend.
-
+**Segregación de red:**
 ```yaml
-# docker-compose.yml
 backend:
   expose:
-    - "5001"   # solo visible dentro de la red Docker appnet
+    - "5001"    # solo accesible dentro de la red Docker 'appnet'
 
 frontend:
   ports:
-    - "5000:5000"   # único puerto expuesto al exterior
+    - "5000:5000"   # único servicio expuesto al exterior
 ```
+
+- El backend y MySQL son accesibles únicamente desde la red Docker interna. Un atacante externo no puede alcanzarlos directamente.
+- El frontend actúa como único punto de entrada y nunca expone acceso directo a MySQL.
+
+Medidas de diseño adicionales:
+- Pool de conexiones MySQL con `pool_size=5` para prevenir agotamiento de recursos.
+- Timeout de 8 segundos en llamadas HTTP del frontend al backend.
+- Inputs truncados para prevenir desbordamientos y ataques de recursos.
+- Usuario no-root `appuser` en todos los contenedores.
 
 ---
 
-## A05:2025 — Security Misconfiguration
+## A05 — Security Misconfiguration
 
-### Descripción del riesgo
-Configuraciones de seguridad incorrectas, permisos excesivos, funcionalidades innecesarias habilitadas.
+### Riesgo
+Configuraciones por defecto inseguras, cabeceras HTTP ausentes, permisos excesivos o funcionalidades innecesarias habilitadas son vectores de ataque comunes y fácilmente explotables.
 
-### Medidas implementadas
+### Implementación
 
-**Fichero:** `backend/app.py` y `frontend/app.py` — decorador `@after_request`
+**Ficheros:** `backend/app.py`, `frontend/app.py`
 
-7 cabeceras HTTP de seguridad en todas las respuestas:
+Las 7 cabeceras de seguridad se aplican en **todas** las respuestas HTTP mediante un decorador `@after_request`:
+
+```python
+@app.after_request
+def security_headers(response):
+    response.headers["X-Content-Type-Options"]    = "nosniff"
+    response.headers["X-Frame-Options"]           = "DENY"
+    response.headers["X-XSS-Protection"]          = "1; mode=block"
+    response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
+    response.headers["Cache-Control"]             = "no-store"
+    response.headers["Content-Security-Policy"]   = "default-src 'self'"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+```
 
 | Cabecera | Valor | Protección |
 |----------|-------|-----------|
 | `X-Content-Type-Options` | `nosniff` | Previene MIME-type sniffing |
 | `X-Frame-Options` | `DENY` | Previene clickjacking |
-| `X-XSS-Protection` | `1; mode=block` | Filtro XSS del navegador |
-| `Strict-Transport-Security` | `max-age=31536000` | Fuerza HTTPS 1 año |
+| `X-XSS-Protection` | `1; mode=block` | Activa el filtro XSS del navegador |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Controla la cabecera Referer |
+| `Cache-Control` | `no-store` | Impide que los navegadores cacheen respuestas sensibles |
 | `Content-Security-Policy` | `default-src 'self'` | Solo recursos del mismo origen |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Controla Referer |
-| `Cache-Control` | `no-store` | No cachear respuestas sensibles |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Fuerza HTTPS durante 1 año |
 
-- `debug=False` en producción.
-- Contenedores corren como usuario `appuser` (no root).
-- Imagen base `python:3.12-slim` — mínima superficie de ataque.
+Configuración adicional:
+- `debug=False` en producción (Flask no expone trazas de error).
+- Imagen base `python:3.12-slim` — superficie de ataque mínima.
+- Contenedores ejecutados como usuario `appuser` (no root).
 
-```python
-@app.after_request
-def set_security_headers(response):
-    response.headers["X-Frame-Options"]           = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"]   = "default-src \'self\'"
-    response.headers["Cache-Control"]             = "no-store"
-    return response
+### Tests que verifican este control
+- `TestSecurityHeaders` — 8 tests verificando cada cabecera en respuestas normales y de error.
+
+---
+
+## A06 — Vulnerable and Outdated Components
+
+### Riesgo
+El uso de dependencias con vulnerabilidades conocidas o sin mantenimiento activo es uno de los vectores de ataque más explotados en producción.
+
+### Implementación
+
+**Ficheros:** `backend/requirements.txt`, `frontend/requirements.txt`, `.github/workflows/ci.yml`
+
+Versiones fijas en todos los `requirements.txt`:
+
+```
+# backend/requirements.txt
+flask==3.0.3
+pyjwt==2.8.0
+bcrypt==4.1.3
+mysql-connector-python==8.4.0
+
+# frontend/requirements.txt
+flask==3.0.3
+requests==2.32.3
 ```
 
-### Tests que verifican esto
-- `TestSecurityHeaders` — 8 tests verificando cada cabecera
+- Todas las versiones corresponden a releases estables con parches de seguridad aplicados en el momento del desarrollo.
+- Las imágenes Docker `mysql:8.0` y `python:3.12-slim` son imágenes oficiales con mantenimiento activo.
+- **Bandit** se ejecuta en cada push en el job `security` del pipeline CI/CD, analizando el código Python en busca de patrones inseguros.
 
 ---
 
-## A06:2025 — Vulnerable and Outdated Components
+## A07 — Identification and Authentication Failures
 
-### Descripción del riesgo
-Uso de componentes con vulnerabilidades conocidas, versiones antiguas sin parches.
+### Riesgo
+Contraseñas débiles, falta de protección contra fuerza bruta, sesiones mal gestionadas o tokens sin expiración permiten comprometer cuentas de usuario.
 
-### Medidas implementadas
+### Implementación
 
-**Ficheros:** `backend/requirements.txt`, `frontend/requirements.txt`
+**Fichero:** `backend/app.py`, `frontend/app.py`
 
-- `flask==3.0.3` — última versión estable
-- `pyjwt==2.8.0` — con correcciones de seguridad recientes
-- `bcrypt==4.1.3` — librería activamente mantenida por pyca
-- `mysql-connector-python==8.4.0` — driver oficial Oracle
-- `requests==2.32.3` — con fix para CVEs anteriores
-- Imágenes Docker: `mysql:8.0` y `python:3.12-slim` oficiales
-- **Bandit** ejecutado en cada push (job `security` en CI/CD)
-
----
-
-## A07:2025 — Identification and Authentication Failures
-
-### Descripción del riesgo
-Vulnerabilidades en autenticación: contraseñas débiles, sesiones mal gestionadas, falta de protección contra fuerza bruta.
-
-### Medidas implementadas
-
-**Fichero:** `backend/app.py` — función `check_rate_limit`, `create_token`; `frontend/app.py` — configuración `SESSION_COOKIE`
-
-- **Rate limiting:** máximo 5 intentos de login por IP en ventana de 15 minutos. El 6º recibe HTTP 429.
-- **JWT con expiración:** los tokens expiran en 1 hora (campo `exp`).
-- **Sesiones seguras:**
-  - `SESSION_COOKIE_HTTPONLY=True` → JavaScript no puede leer la cookie (mitiga XSS)
-  - `SESSION_COOKIE_SAMESITE='Lax'` → no se envía en requests cross-site (mitiga CSRF)
-  - `SESSION_COOKIE_SECURE=True` cuando HTTPS en producción
-- **Protección contra timing attacks:** si el usuario no existe, se realiza igualmente `bcrypt.checkpw` con hash ficticio. El tiempo de respuesta es idéntico tanto si el usuario existe como si no.
-- Mismo mensaje de error para usuario inexistente Y contraseña errónea.
-
+**Rate limiting — protección contra fuerza bruta:**
 ```python
-# Timing attack protection
+def check_rate_limit(ip: str) -> bool:
+    """Máximo 5 intentos por IP en ventana de 15 minutos."""
+    now = time.time()
+    window = [t for t in _login_attempts.get(ip, []) if now - t < 900]
+    if len(window) >= 5:
+        return False   # 6º intento → 429
+    window.append(now)
+    _login_attempts[ip] = window
+    return True
+```
+
+**Protección contra timing attacks:**
+```python
+# Si el usuario no existe, se ejecuta igualmente bcrypt.checkpw con un hash ficticio.
+# El tiempo de respuesta es ~250ms en ambos casos → no se puede enumerar usuarios.
 dummy_hash = "$2b$12$" + "x" * 53
 stored = row["password_hash"] if row else dummy_hash
 valid  = row is not None and verify_password(password, stored)
-# tiempo ~250ms siempre, independientemente de si el usuario existe
 ```
 
-### Tests que verifican esto
-- `TestRateLimit` — 5 tests
-- `test_login_rate_limited` → 6º intento recibe 429
-- `test_login_nonexistent_user` → devuelve 401 (no 404)
+**Sesiones seguras:**
+```python
+app.config["SESSION_COOKIE_HTTPONLY"] = True    # JavaScript no puede leer la cookie
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Protección CSRF
+app.config["SESSION_COOKIE_SECURE"]   = True   # Solo HTTPS en producción
+```
+
+- JWT con expiración de 1 hora (`exp`).
+- Mismo mensaje de error para usuario inexistente y contraseña incorrecta (no se revela qué usuarios existen).
+
+### Tests que verifican este control
+- `TestRateLimit` — 5 tests: ventana deslizante, múltiples IPs independientes.
+- `test_login_nonexistent_user` → devuelve 401, no 404.
+- `test_login_rate_limited` → 6º intento devuelve 429.
 
 ---
 
-## A08:2025 — Software and Data Integrity Failures
+## A08 — Software and Data Integrity Failures
 
-### Descripción del riesgo
-Código y datos no protegidos contra modificaciones. Deserialización insegura, CI/CD sin validación, dependencias de fuentes no confiables.
+### Riesgo
+Código o dependencias provenientes de fuentes no verificadas, pipelines de CI/CD sin validación, o deserialización insegura permiten introducir código malicioso en producción.
 
-### Medidas implementadas
+### Implementación
 
-- Imágenes Docker `mysql:8.0` y `python:3.12-slim` son imágenes oficiales con checksums verificados.
-- No se usa JavaScript, CSS ni fuentes desde CDNs externos en los templates.
-- `Content-Security-Policy: default-src 'self'` bloquea cualquier recurso externo.
-- Cada merge a `main` debe pasar los jobs `test + security + docker build`.
-- Bandit analiza el código antes del build.
-- El payload del JWT está firmado con HS256. Cualquier modificación invalida la firma.
+- Imágenes Docker `mysql:8.0` y `python:3.12-slim` son imágenes oficiales verificadas mediante checksums.
+- No se carga ningún recurso externo (JavaScript, CSS, fuentes) en los templates HTML. Todo es local.
+- `Content-Security-Policy: default-src 'self'` bloquea la carga de cualquier recurso externo, incluyendo scripts inyectados.
+- El pipeline CI/CD requiere que los jobs `test`, `security` y `docker build` pasen antes de cualquier deploy.
+- El payload del JWT está firmado con HS256. Cualquier modificación del contenido invalida la firma, previniendo manipulación de roles o identidades.
 
 ---
 
-## A09:2025 — Security Logging and Monitoring Failures
+## A09 — Security Logging and Monitoring Failures
 
-### Descripción del riesgo
-Sin logging adecuado, las brechas no se detectan. Incluye no registrar logins fallidos, no alertar sobre actividad sospechosa.
+### Riesgo
+Sin un registro adecuado de eventos de seguridad, las brechas pasan desapercibidas durante días o semanas. La ausencia de alertas ante actividad sospechosa impide la respuesta a incidentes.
 
-### Medidas implementadas
+### Implementación
 
 **Fichero:** `backend/app.py` — función `log_action`, tabla `audit_log`
-
-- Registra: `username`, `action`, `ip`, `detail`, `created_at` en cada evento relevante.
-- Acciones registradas: `login_success`, `login_failed`, `login_blocked`, `get_projects`, `list_users`, `create_project`, `user_activated`, `user_deactivated`.
-- La IP de origen se registra en cada acción.
-- Los logs persisten en MySQL (volumen Docker).
-- El administrador ve los últimos 100 eventos en tiempo real desde la UI.
-- El dashboard admin muestra **"fallos de login en la última hora"** con alerta visual si supera 3.
 
 ```python
 def log_action(username: str, action: str, detail: str = ""):
     conn = get_pool().get_connection()
     cur  = conn.cursor()
     cur.execute(
-        "INSERT INTO audit_log (username, action, ip, detail) VALUES (%s,%s,%s,%s)",
+        "INSERT INTO audit_log (username, action, ip, detail) VALUES (%s, %s, %s, %s)",
         (username, action, request.remote_addr, detail)
     )
     conn.commit()
 ```
 
+Acciones registradas automáticamente:
+
+| Acción | Cuándo se registra |
+|--------|-------------------|
+| `login_success` | Login exitoso |
+| `login_failed` | Contraseña incorrecta |
+| `login_blocked` | Rate limit activado |
+| `get_projects` | Listado de proyectos |
+| `list_users` | Admin lista usuarios |
+| `create_project` | Creación de proyecto |
+| `user_activated` | Admin activa usuario |
+| `user_deactivated` | Admin desactiva usuario |
+
+Cada entrada incluye `username`, `action`, `ip`, `detail` y `created_at`.
+
+**Monitorización en tiempo real:**
+- El panel de administración muestra los últimos 100 eventos.
+- El dashboard admin incluye un contador de fallos de login en la última hora con **alerta visual roja** si supera 3.
+- Los logs persisten en MySQL a través del volumen Docker.
+
 ---
 
-## A10:2025 — Server-Side Request Forgery (SSRF)
+## A10 — Server-Side Request Forgery (SSRF)
 
-### Descripción del riesgo
-SSRF ocurre cuando la aplicación hace peticiones HTTP a una URL suministrada por el usuario, permitiendo acceder a servicios internos.
+### Riesgo
+Si una aplicación realiza peticiones HTTP a URLs suministradas por el usuario, un atacante puede redirigirlas hacia servicios internos (como bases de datos o APIs de metadatos de cloud) que no deberían ser accesibles desde el exterior.
 
-### Medidas implementadas
+### Implementación
 
-**Fichero:** `frontend/app.py` — constante `BACKEND_URL`
-
-- `BACKEND_URL` fija en variable de entorno. El frontend **nunca** acepta una URL del usuario.
-- Todas las llamadas al backend usan `call_backend()` con la URL fija.
-- No existe ningún endpoint que acepte una URL como parámetro.
-- La red Docker actúa como barrera adicional.
+**Fichero:** `frontend/app.py`
 
 ```python
-# frontend/app.py
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:5001")
 
 def call_backend(method: str, path: str, **kwargs):
-    # path viene del código, nunca del usuario
-    url = f"{BACKEND_URL}{path}"
-    return getattr(requests, method)(url, timeout=8, **kwargs)
+    """
+    La URL de destino es siempre BACKEND_URL + path.
+    path viene del código de la aplicación, nunca del usuario.
+    """
+    return getattr(requests, method)(
+        f"{BACKEND_URL}{path}", timeout=8, **kwargs
+    )
 ```
+
+- `BACKEND_URL` es una constante definida en variables de entorno. No existe ningún endpoint que acepte una URL como parámetro de entrada.
+- El usuario nunca puede influir en el destino de las peticiones HTTP que hace el servidor.
+- La red Docker actúa como barrera adicional: solo el backend es accesible desde el frontend, y el backend no tiene salida a Internet.
 
 ---
 
 ## Referencias
 
-- [OWASP Top 10 2021 Web](https://owasp.org/Top10/)
+- [OWASP Top 10 2021](https://owasp.org/Top10/)
 - [OWASP API Security Top 10 2023](https://owasp.org/API-Security/)
 - [OWASP Cheat Sheet — Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
-- [OWASP Cheat Sheet — JWT](https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html)
+- [OWASP Cheat Sheet — JSON Web Token](https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html)
 - [OWASP Cheat Sheet — SQL Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html)
+- [OWASP Cheat Sheet — HTTP Security Headers](https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html)
