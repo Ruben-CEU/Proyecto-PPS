@@ -1,200 +1,170 @@
 # Pruebas Postman — SecureApp API
 
-Documentación de la colección Postman para verificar todos los endpoints de la API REST de SecureApp.
+Documentación de la colección de tests Postman para la API REST de SecureApp.
+
+---
+
+## Resultado de ejecución
+
+**53 / 53 tests pasados ✅** — 0 fallos · Tiempo medio de respuesta: 32ms
+
+![Resultados de la ejecución completa de la colección Postman](./Captura%20de%20pantalla%202026-03-16%20190012.png)
 
 ---
 
 ## Requisitos previos
 
-Antes de ejecutar las pruebas necesitas:
-
-**1. Docker corriendo con los 3 contenedores activos:**
+**1. Aplicación corriendo en Docker:**
 ```bash
-cd secureapp
 docker compose up -d
-docker compose ps   # verificar que los 3 están Up (healthy)
+docker compose ps   # los 3 contenedores deben estar Up (healthy)
 ```
 
-**2. Postman instalado:**
-Descárgalo gratis en [postman.com/downloads](https://www.postman.com/downloads/)
+**2. Postman instalado** — [postman.com/downloads](https://www.postman.com/downloads/)
 
-**3. Importar los dos ficheros en Postman:**
-- `SecureApp.postman_collection.json` — la colección con todos los tests
-- `SecureApp.postman_environment.json` — las variables de entorno
+**3. Importar los ficheros en Postman:**
 
-Para importar: abre Postman → **Import** → arrastra los dos ficheros a la vez.
+Abrir Postman → **Import** → arrastrar los dos ficheros a la vez:
+- `SecureApp.postman_collection.json` — colección con todos los tests
+- `SecureApp.postman_environment.json` — variables de entorno
 
 **4. Activar el entorno:**
-En Postman, arriba a la derecha, selecciona **SecureApp Local** en el desplegable de entornos.
+
+En Postman, seleccionar **SecureApp Local** en el desplegable de entornos (arriba a la derecha).
 
 ---
 
 ## Variables de entorno
 
-| Variable | Valor inicial | Descripción |
-|----------|--------------|-------------|
-| `base_url` | `http://localhost:5000` | URL base del frontend (proxy hacia el backend) |
-| `admin_token` | *(vacío)* | Se rellena automáticamente al ejecutar el login de admin |
-| `user_token` | *(vacío)* | Se rellena automáticamente al ejecutar el login de usuario |
-| `project_id` | *(vacío)* | Se rellena automáticamente al crear o listar proyectos |
+| Variable | Valor por defecto | Descripción |
+|----------|------------------|-------------|
+| `base_url` | `http://localhost:5000` | URL del frontend — proxy hacia el backend |
+| `admin_token` | *(se rellena automáticamente)* | JWT del administrador |
+| `user_token` | *(se rellena automáticamente)* | JWT del usuario normal |
+| `project_id` | *(se rellena automáticamente)* | ID del último proyecto creado o listado |
 
-> ⚠️ **Importante:** Los tokens se guardan automáticamente al ejecutar los tests de login. No necesitas copiarlos manualmente. Ejecuta siempre la colección completa en orden.
+Los tokens se guardan automáticamente al ejecutar el login — no es necesario copiarlos manualmente.
 
 ---
 
 ## Cómo ejecutar
 
-### Opción A — Ejecutar toda la colección (recomendado)
+1. Clic derecho sobre **SecureApp API** en el panel izquierdo → **Run collection**
+2. Configurar **Delay: 500 ms** entre requests (evita activar el rate limiting)
+3. Clic en **Run SecureApp API**
 
-1. En el panel izquierdo, clic derecho en **SecureApp API**
-2. Seleccionar **Run collection**
-3. Dejar el orden por defecto
-4. Añadir un **Delay de 500ms** entre requests (evita el rate limiting)
-5. Clic en **Run SecureApp API**
-
-### Opción B — Ejecutar un request suelto
-
-Si quieres probar un endpoint concreto, primero ejecuta manualmente **"POST /api/login — admin correcto"** de la carpeta 02 para que se guarde el token, y luego ya puedes ejecutar cualquier otro request.
+> Si aparecen errores 429 (Too Many Requests), ejecutar `docker compose restart backend` para reiniciar el contador de rate limiting.
 
 ---
 
 ## Descripción de las pruebas
 
-### 01 - Health Check (1 prueba)
+### 01 — Health Check · 3 tests
 
-Verifica que el servicio está operativo.
-
-| Request | Método | Qué verifica |
-|---------|--------|-------------|
-| GET /api/health | GET | Status 200, `status: ok`, base de datos MySQL conectada, Content-Type JSON |
-
----
-
-### 02 - Autenticación (6 pruebas)
-
-Verifica el sistema de login con JWT. El primer test guarda el token automáticamente.
-
-| Request | Método | Resultado esperado | Qué verifica |
-|---------|--------|--------------------|-------------|
-| Login admin correcto | POST | 200 ✅ | Token JWT con 3 partes, role=admin, token guardado en variable |
-| Login usuario normal | POST | 200 ✅ | Token JWT, role=user, token guardado en variable |
-| Contraseña incorrecta | POST | 401 ❌ | No devuelve token, devuelve campo `error` |
-| Usuario inexistente | POST | 401 ❌ | Mismo error que contraseña incorrecta (no revela si el usuario existe — OWASP A07) |
-| Body vacío | POST | 400 ❌ | Validación de campos obligatorios |
-| GET en /api/login | GET | 405 ❌ | Método no permitido |
-
-> 🔒 **OWASP A07:** El test de usuario inexistente verifica que la API devuelve 401 (no 404), evitando revelar qué usuarios existen en el sistema.
-
----
-
-### 03 - Perfil y Datos (3 pruebas)
-
-Verifica el control de acceso a datos del perfil.
-
-| Request | Método | Resultado esperado | Qué verifica |
-|---------|--------|--------------------|-------------|
-| Perfil con token admin | GET | 200 ✅ | Devuelve username=admin y role=admin |
-| Perfil sin token | GET | 401 ❌ | Acceso denegado sin autenticación |
-| Perfil con token inválido | GET | 401 ❌ | Token manipulado o expirado es rechazado |
-
-> 🔒 **OWASP A01:** Verifica que los endpoints protegidos rechazan requests sin JWT válido.
-
----
-
-### 04 - Proyectos (6 pruebas)
-
-Verifica el CRUD de proyectos y la autorización por rol.
-
-| Request | Método | Resultado esperado | Qué verifica |
-|---------|--------|--------------------|-------------|
-| GET proyectos con token | GET | 200 ✅ | Array de proyectos, campo `total`, no expone `password_hash` |
-| POST crear proyecto (admin) | POST | 201 ✅ | Crea proyecto en MySQL, devuelve `id` autoincremental |
-| POST crear proyecto (usuario) | POST | 403 ❌ | Usuario normal no puede crear proyectos |
-| POST nombre vacío | POST | 400 ❌ | Validación: nombre obligatorio |
-| POST estado inválido | POST | 400 ❌ | Validación: solo acepta activo/completado/en revisión |
-| POST sin token | POST | 401 ❌ | Requiere autenticación |
-
-> 🔒 **OWASP A01:** El test de usuario denegado verifica que la autorización por rol funciona.
-> 🗄️ **MySQL:** El test de creación verifica que el `id` devuelto es un número positivo asignado por MySQL autoincrement.
-
----
-
-### 05 - Administración (8 pruebas)
-
-Verifica el panel de administración exclusivo para el rol admin.
-
-| Request | Método | Resultado esperado | Qué verifica |
-|---------|--------|--------------------|-------------|
-| GET usuarios (admin) | GET | 200 ✅ | Lista con `total`, sin `password_hash` en ningún usuario |
-| GET usuarios (user) | GET | 403 ❌ | Usuario normal no puede listar usuarios |
-| GET audit log | GET | 200 ✅ | Array de logs con campos `action`, `username`, `created_at` |
-| GET estadísticas | GET | 200 ✅ | Campos `total_users`, `total_projects`, `failed_logins_last_hour` |
-| POST toggle usuario (desactivar) | POST | 200 ✅ | Mensaje contiene "activado" o "desactivado" |
-| POST toggle usuario (reactivar) | POST | 200 ✅ | Segundo toggle restaura el estado |
-| POST toggle usuario inexistente | POST | 404 ❌ | Usuario con ID 999 no existe |
-| POST toggle por usuario normal | POST | 403 ❌ | Solo admin puede activar/desactivar usuarios |
-
-> 🔒 **OWASP A02:** El test de lista de usuarios verifica que `password_hash` nunca se expone en la API.
-> 🔒 **OWASP A09:** El test de audit log verifica que las acciones quedan registradas en MySQL.
-
----
-
-### 06 - Cabeceras de Seguridad OWASP A05 (2 pruebas)
-
-Verifica que todas las respuestas incluyen las cabeceras HTTP de seguridad requeridas.
+Verifica que el backend y la base de datos están operativos antes de ejecutar el resto.
 
 | Request | Qué verifica |
 |---------|-------------|
-| Cabeceras en respuesta normal | Las 7 cabeceras en una respuesta 200 |
-| Cabeceras en respuesta de error | Las cabeceras también presentes en respuestas 401 |
+| `GET /api/health` | Status 200, campo `status: ok`, `engine: MySQL 8`, Content-Type JSON |
 
-Cabeceras verificadas:
+---
+
+### 02 — Autenticación · 10 tests
+
+Verifica el sistema de login con JWT. El primer test guarda el token automáticamente para los requests siguientes.
+
+| Request | Resultado esperado | Qué verifica |
+|---------|--------------------|-------------|
+| Login admin correcto | 200 ✅ | Token JWT (3 partes), `role: admin`, token guardado en entorno |
+| Login usuario normal | 200 ✅ | Token JWT, `role: user`, token guardado en entorno |
+| Contraseña incorrecta | 401 ❌ | Sin token en respuesta, campo `error` presente |
+| Usuario inexistente | 401 ❌ | Mismo error que contraseña incorrecta — no revela si el usuario existe (OWASP A07) |
+| Body vacío | 400 ❌ | Validación de campos obligatorios |
+| GET en `/api/login` | 405 ❌ | Método no permitido |
+
+---
+
+### 03 — Perfil y Datos · 3 tests
+
+Verifica el control de acceso a los datos del perfil autenticado.
+
+| Request | Resultado esperado | Qué verifica |
+|---------|--------------------|-------------|
+| Perfil con token admin | 200 ✅ | `username: admin`, `role: admin` |
+| Perfil sin token | 401 ❌ | Acceso denegado sin autenticación (OWASP A01) |
+| Perfil con token inválido | 401 ❌ | Token manipulado o firmado con clave incorrecta es rechazado |
+
+---
+
+### 04 — Proyectos · 7 tests
+
+Verifica el listado y creación de proyectos, incluyendo la autorización por rol.
+
+| Request | Resultado esperado | Qué verifica |
+|---------|--------------------|-------------|
+| GET proyectos con token | 200 ✅ | Array de proyectos, campo `total`, sin `password_hash` en la respuesta |
+| POST crear proyecto (admin) | 201 ✅ | Fila persistida en MySQL, `id` autoincremental devuelto |
+| POST crear proyecto (usuario normal) | 403 ❌ | Usuarios con rol `user` no pueden crear proyectos (OWASP A01) |
+| POST nombre vacío | 400 ❌ | El nombre es un campo obligatorio |
+| POST estado inválido | 400 ❌ | Solo se aceptan `activo`, `completado`, `en revisión`, `cancelado` |
+| POST sin token | 401 ❌ | Requiere autenticación |
+
+---
+
+### 05 — Administración · 8 tests
+
+Verifica el panel de administración, accesible exclusivamente para el rol admin.
+
+| Request | Resultado esperado | Qué verifica |
+|---------|--------------------|-------------|
+| GET usuarios (admin) | 200 ✅ | Lista con `total`, sin `password_hash` en ningún usuario (OWASP A02) |
+| GET usuarios (usuario normal) | 403 ❌ | Solo admin puede listar usuarios |
+| GET audit log | 200 ✅ | Array de logs con `action`, `username`, `ip`, `created_at` (OWASP A09) |
+| GET estadísticas | 200 ✅ | Campos numéricos: `users`, `projects`, `admins`, `failed_logins_1h` |
+| POST toggle desactivar usuario | 200 ✅ | Mensaje indica el nuevo estado |
+| POST toggle reactivar usuario | 200 ✅ | Estado restaurado al original |
+| POST toggle usuario inexistente | 404 ❌ | ID 999 no existe en la base de datos |
+| POST toggle (usuario normal) | 403 ❌ | Solo admin puede cambiar el estado de cuentas |
+
+---
+
+### 06 — Cabeceras de Seguridad OWASP A05 · 7 tests
+
+Verifica que las 7 cabeceras HTTP de seguridad están presentes en todas las respuestas.
 
 | Cabecera | Valor | Protección |
 |----------|-------|-----------|
 | `X-Frame-Options` | `DENY` | Previene clickjacking |
-| `X-Content-Type-Options` | `nosniff` | Previene MIME sniffing |
-| `Cache-Control` | `no-store` | No cachear datos sensibles |
+| `X-Content-Type-Options` | `nosniff` | Previene MIME-type sniffing |
+| `Cache-Control` | `no-store` | No cachear respuestas sensibles |
 | `Content-Security-Policy` | `default-src 'self'` | Bloquea recursos externos |
-| `Strict-Transport-Security` | `max-age=...` | Fuerza HTTPS |
-| `Referrer-Policy` | presente | Controla cabecera Referer |
+| `Strict-Transport-Security` | `max-age=31536000` | Fuerza HTTPS durante 1 año |
+| `Referrer-Policy` | presente | Controla la cabecera Referer |
 | `X-XSS-Protection` | `1; mode=block` | Filtro XSS del navegador |
 
 ---
 
-## Resumen total
+## Resumen
 
-| Carpeta | Tests | Casos ✅ | Casos ❌ |
-|---------|-------|---------|---------|
+| Carpeta | Tests | ✅ Positivos | ❌ Negativos |
+|---------|-------|------------|------------|
 | 01 Health Check | 3 | 3 | 0 |
-| 02 Autenticación | 13 | 5 | 8 |
-| 03 Perfil y Datos | 5 | 2 | 3 |
-| 04 Proyectos | 10 | 4 | 6 |
-| 05 Administración | 12 | 8 | 4 |
-| 06 Cabeceras Seguridad | 9 | 7 | 2 |
-| **TOTAL** | **52** | **29** | **23** |
+| 02 Autenticación | 10 | 5 | 5 |
+| 03 Perfil y Datos | 3 | 1 | 2 |
+| 04 Proyectos | 7 | 2 | 5 |
+| 05 Administración | 8 | 4 | 4 |
+| 06 Cabeceras Seguridad | 7 | 7 | 0 |
+| **Total** | **53** | **22** | **16** |
 
-> Los casos ❌ son pruebas de comportamiento negativo — verifican que la API rechaza correctamente peticiones inválidas, no autorizadas o malformadas. Son tan importantes como los casos ✅.
+Los tests negativos (❌) verifican que la API rechaza correctamente peticiones no autorizadas, malformadas o con métodos no permitidos. Son tan relevantes como los positivos para garantizar la seguridad de la aplicación.
 
 ---
 
 ## Solución de problemas
 
-**Error 429 Too Many Requests:**
-El rate limiting bloqueó tu IP por demasiados intentos de login fallidos. Espera 15 minutos o reinicia el backend:
-```bash
-docker compose restart backend
-```
-
-**Error 401 en todos los requests:**
-El token no se guardó. Ejecuta primero manualmente el request **"POST /api/login — admin correcto"** de la carpeta 02.
-
-**Error de conexión / ECONNREFUSED:**
-Los contenedores no están corriendo:
-```bash
-docker compose up -d
-docker compose ps
-```
-
-**`{{base_url}}` aparece sin resolver:**
-El entorno no está activado. Selecciona **SecureApp Local** en el desplegable de arriba a la derecha en Postman.
+| Síntoma | Causa probable | Solución |
+|---------|---------------|---------|
+| Error 429 en los logins | Rate limiting activado por intentos previos | `docker compose restart backend` |
+| Error 401 en todos los requests | Token no guardado (login no ejecutado primero) | Ejecutar manualmente `POST /api/login — admin correcto` |
+| Sin respuesta / timeout | Los contenedores no están corriendo | `docker compose up -d` |
+| `{{base_url}}` aparece sin resolver | El entorno no está activado en Postman | Seleccionar **SecureApp Local** en el desplegable de entornos |
