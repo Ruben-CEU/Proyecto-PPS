@@ -2,15 +2,7 @@
 
 Documentación de la colección de tests Postman para la API REST de SecureApp.
 
----
 
-## Resultado de ejecución
-
-**53 / 53 tests pasados ✅** — 0 fallos · Tiempo medio de respuesta: 32ms
-
-![Resultados de la ejecución](https://github.com/Ruben-CEU/Proyecto-PPS/blob/feature/postman-tests/resuldatos.png?raw=true)
-
----
 
 ## Requisitos previos
 
@@ -168,3 +160,13 @@ Los tests negativos (❌) verifican que la API rechaza correctamente peticiones 
 | Error 401 en todos los requests | Token no guardado (login no ejecutado primero) | Ejecutar manualmente `POST /api/login — admin correcto` |
 | Sin respuesta / timeout | Los contenedores no están corriendo | `docker compose up -d` |
 | `{{base_url}}` aparece sin resolver | El entorno no está activado en Postman | Seleccionar **SecureApp Local** en el desplegable de entornos |
+
+---
+
+## Resultado de ejecución
+
+**53 / 53 tests pasados ✅** — 0 fallos · Tiempo medio de respuesta: 32ms
+
+![Resultados de la ejecución](https://github.com/Ruben-CEU/Proyecto-PPS/blob/feature/postman-tests/resuldatos.png?raw=true)
+
+---
