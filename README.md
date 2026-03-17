@@ -5,7 +5,16 @@
 > Proyecto de Puesta en Producción Segura (PPS) · CEU · Marzo 2026
 
 [![CI/CD Pipeline](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml)
-
+[![CI/CD Pipeline](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0.3-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![JWT](https://img.shields.io/badge/JWT-HS256-000000?logo=jsonwebtokens&logoColor=white)](https://jwt.io/)
+[![bcrypt](https://img.shields.io/badge/bcrypt-rounds%3D12-338C00?logo=security&logoColor=white)](https://pypi.org/project/bcrypt/)
+[![OWASP](https://img.shields.io/badge/OWASP-Top%2010%202025-000000?logo=owasp&logoColor=white)](./OWASP.md)
+[![Postman](https://img.shields.io/badge/Postman-53%2F53%20tests-FF6C37?logo=postman&logoColor=white)](./postman/README.md)
+[![pytest](https://img.shields.io/badge/pytest-passing-0A9EDC?logo=pytest&logoColor=white)](./tests/)
 ---
 
 ## Descripción
