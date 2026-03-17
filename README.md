@@ -1,51 +1,60 @@
 # SecureApp 🔒
 
-**Aplicación web segura con Flask · MySQL · Docker · JWT · bcrypt**
+**Aplicación web segura construida con Flask · MySQL · Docker · JWT · bcrypt**
 
-> Versión 2.0 — Marzo 2026
+> Proyecto de Puesta en Producción Segura (PPS) · CEU · Marzo 2026
 
----
-
-## Descripción del Proyecto
-
-SecureApp es una aplicación web full-stack que implementa buenas prácticas de seguridad con Python Flask, MySQL y Docker. Cubre autenticación JWT, autorización por roles, API REST segura, base de datos MySQL real y cumplimiento del OWASP Top 10 2025.
+[![CI/CD Pipeline](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruben-CEU/Proyecto-PPS/actions/workflows/ci.yml)
 
 ---
 
-## 2. Requisitos del Proyecto e Implementación
+## Descripción
 
-### 2.1 Contenedores Docker
+SecureApp es una aplicación web full-stack que demuestra la implementación práctica de buenas prácticas de seguridad en un entorno de producción real. Está construida sobre Python Flask, MySQL 8 y Docker, e implementa autenticación JWT, autorización por roles, API REST segura y cumplimiento del **OWASP Top 10 2025**.
 
-**Requisito:** Las aplicaciones se deben crear en contenedores.
+---
+
+## Índice
+
+1. [Requisitos e implementación](#requisitos-e-implementación)
+2. [Estructura del proyecto](#estructura-del-proyecto)
+3. [Instalación y puesta en marcha](#instalación-y-puesta-en-marcha)
+4. [Pruebas](#pruebas)
+5. [Tecnologías](#tecnologías)
+
+---
+
+## Requisitos e implementación
+
+### 1. Contenedores Docker
 
 **Ficheros:** `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`
 
-Tres contenedores orquestados con Docker Compose:
+La aplicación se despliega en tres contenedores orquestados con Docker Compose:
 
-- **mysql** → MySQL 8.0 oficial. Puerto 3306 solo red interna Docker. Datos en volumen `mysql_data`.
-- **backend** → Flask REST API puerto 5001. Solo accesible desde la red interna.
-- **frontend** → Flask UI puerto 5000. Único servicio expuesto al exterior.
+| Contenedor | Imagen | Puerto | Exposición |
+|-----------|--------|--------|-----------|
+| `secureapp-mysql` | mysql:8.0 | 3306 | Solo red interna |
+| `secureapp-backend` | python:3.12-slim | 5001 | Solo red interna |
+| `secureapp-frontend` | python:3.12-slim | 5000 | Exterior ← único punto de entrada |
 
-Orden controlado: `depends_on + condition: service_healthy`. MySQL listo → backend → frontend.
+El orden de arranque está controlado mediante `depends_on + condition: service_healthy`, garantizando que MySQL esté listo antes de que el backend intente conectarse, y el backend antes del frontend.
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
-# http://localhost:5000
+# Acceder en http://localhost:5000
 ```
 
 ---
 
-### 2.2 Entorno Virtual / Aislamiento
+### 2. Entorno aislado de desarrollo
 
-**Requisito:** Aprovechar entornos virtuales para aislar el desarrollo.
+**Opción utilizada:** contenedores Docker como entorno de desarrollo aislado.
 
-**Opción utilizada:** Contenedores Docker como entorno de desarrollo aislado.
-
-Cada contenedor tiene sistema de ficheros propio, dependencias Python independientes, usuario no-root (`appuser`) y red privada Docker. El aislamiento supera al de `virtualenv` y garantiza reproducibilidad total en cualquier máquina con Docker.
+Cada contenedor tiene su propio sistema de ficheros, dependencias Python independientes, usuario no-root (`appuser`) y red privada Docker. Este enfoque supera al de `virtualenv` tradicional ya que garantiza reproducibilidad total en cualquier máquina con Docker instalado.
 
 ```bash
-# Ver entornos corriendo (equivalente al prompt del entorno virtual):
 docker ps
 # secureapp-frontend  Up (healthy)
 # secureapp-backend   Up (healthy)
@@ -54,59 +63,60 @@ docker ps
 
 ---
 
-### 2.3 Autenticación y Autorización — Dos Roles
+### 3. Autenticación y autorización — dos roles
 
-**Requisito:** Dos usuarios (admin y normal). Indicar usuario identificado. Admin ve algo diferente (color, título, etc.).
+**Ficheros:** `backend/app.py`, `frontend/templates/dashboard.html`, `frontend/templates/admin.html`
 
-**Ficheros:** `backend/app.py` (`token_required`, `admin_required`), `dashboard.html`, `admin.html`
+El sistema implementa dos roles diferenciados con experiencias visuales distintas:
 
-Implementación de roles:
+- **Rol admin** → interfaz morada (`#4c1d95`), acceso al panel de administración, gestión de usuarios y creación de proyectos.
+- **Rol user** → interfaz azul (`#1e3a5f`), acceso de solo lectura a proyectos.
 
-- Columna `role ENUM('admin','user')` en tabla `users` de MySQL. Demo: `admin/Admin1234!` y `usuario/User1234!`
-- JWT firmado con HS256 incluye el campo `role`. El frontend no puede modificarlo sin invalidar la firma.
-- `@token_required`: exige JWT válido en cada endpoint protegido.
-- `@admin_required`: exige JWT válido Y `role == 'admin'`. Endpoints `/api/admin/*` lo usan.
+La autorización se implementa mediante dos decoradores en el backend:
 
-Diferenciación visual según rol:
+- `@token_required` — exige JWT válido. Sin token → 401.
+- `@admin_required` — exige JWT válido y `role == 'admin'`. Usuario normal → 403.
+
+El rol viaja dentro del propio JWT firmado con HS256, por lo que el frontend no puede modificarlo sin invalidar la firma.
 
 | | Admin | Usuario |
-|---|---|---|
-| Fondo | Morado `#f5f3ff` | Azul `#f1f5f9` |
-| Cabecera | `#4c1d95` | `#1e3a5f` |
+|--|-------|---------|
+| Color cabecera | `#4c1d95` (morado) | `#1e3a5f` (azul) |
 | Badge | `ADMIN` | `USER` |
-| Menú extra | Panel admin, crear proyectos, estadísticas | Solo proyectos |
+| Panel administración | ✅ | ❌ |
+| Crear proyectos | ✅ | ❌ |
+| Ver proyectos | ✅ | ✅ |
 
 ---
 
-### 2.4 Frontend Flask comunicado con Backend via API
+### 4. Frontend Flask comunicado con Backend via API REST
 
-**Requisito:** Front end Flask que se comunicará con un back end a través de una API con mecanismos seguros.
-
-**Ficheros:** `backend/app.py` (endpoints), `frontend/app.py` (función `call_backend`)
+**Ficheros:** `backend/app.py`, `frontend/app.py`
 
 ```
-Navegador <-> Frontend Flask :5000
-                |
-           HTTP + JWT Bearer (red interna Docker)
-                |
-         Backend Flask API :5001
-                |
-          mysql-connector-python
-                |
-           MySQL 8 :3306
+Navegador ←→ Frontend Flask :5000
+                    │
+          HTTP + JWT Bearer
+          (red interna Docker)
+                    │
+          Backend Flask API :5001
+                    │
+       mysql-connector-python
+                    │
+            MySQL 8 :3306
 ```
 
-Mecanismo seguro: JWT HS256. Flujo:
+**Flujo de autenticación:**
 
-1. `POST /api/login` → backend verifica contraseña en MySQL con `bcrypt.checkpw` → genera JWT firmado
-2. Frontend guarda JWT en sesión Flask server-side (cookie `HttpOnly + SameSite=Lax`)
-3. Cada llamada incluye cabecera: `Authorization: Bearer <token>`
-4. Backend verifica firma JWT con `@token_required` antes de procesar cada request
+1. `POST /api/login` → el backend verifica la contraseña contra MySQL con `bcrypt.checkpw` y genera un JWT firmado.
+2. El frontend guarda el JWT en una sesión Flask server-side (cookie `HttpOnly + SameSite=Lax`).
+3. Cada llamada al backend incluye `Authorization: Bearer <token>`.
+4. El backend verifica la firma del JWT antes de procesar cualquier request protegido.
 
-Endpoints de la API REST:
+**Endpoints de la API:**
 
-| Método | Endpoint | Protección |
-|--------|----------|-----------|
+| Método | Ruta | Acceso |
+|--------|------|--------|
 | GET | `/api/health` | Pública |
 | POST | `/api/login` | Pública |
 | GET | `/api/profile` | `@token_required` |
@@ -119,151 +129,163 @@ Endpoints de la API REST:
 
 ---
 
-### 2.5 Base de Datos MySQL
+### 5. Base de datos MySQL
 
-**Requisito:** Base de datos MySQL conectada.
+**Ficheros:** `backend/app.py`, `docker-compose.yml`, `mysql/init.sql`
 
-**Ficheros:** `backend/app.py` (`get_pool`, `get_db`, `init_db`), `docker-compose.yml`, `mysql/init.sql`
+- Driver oficial `mysql-connector-python 8.4.0`.
+- Pool de conexiones `MySQLConnectionPool` con `pool_size=5`.
+- 30 reintentos con espera exponencial en el arranque para aguantar el boot del contenedor MySQL.
+- Inicialización automática de tablas con `init_db()` en el primer arranque.
+- Datos persistidos en volumen Docker `mysql_data`.
 
-- Driver: `mysql-connector-python 8.4.0` (oficial de Oracle/MySQL)
-- Pool de conexiones: `MySQLConnectionPool` con `pool_size=5`
-- 30 reintentos con espera exponencial al arrancar (aguanta el boot del contenedor MySQL)
-- Creación automática de tablas con `init_db()` en el primer arranque
-- Persistencia: volumen Docker `mysql_data`
-
-Tablas:
-
-| Tabla | Columnas principales |
-|-------|---------------------|
-| `users` | id, username UNIQUE, password_hash (bcrypt), role ENUM, active, created_at |
+| Tabla | Columnas clave |
+|-------|---------------|
+| `users` | id, username (UNIQUE), password_hash (bcrypt), role ENUM, active, created_at |
+| `projects` | id, name, description, status ENUM, owner, created_at |
 | `audit_log` | id, username, action, ip, detail, created_at |
-| `projects` | id, name, description, status ENUM, owner, created_at, updated_at |
 
 ```bash
-# Verificar la BD:
+# Verificar tablas y usuarios directamente en MySQL:
 docker exec secureapp-mysql mysql -u appuser -papppassword secureapp \
-  -e "SHOW TABLES; SELECT username, role FROM users;"
+  -e "SHOW TABLES; SELECT username, role, active FROM users;"
 ```
 
 ---
 
-### 2.6 OWASP Top 10
+### 6. OWASP Top 10 — 2025
 
-**Requisito:** Comprobar OWASP Top 10 (web y APIs). Ver fichero [OWASP.md](./OWASP.md) para análisis completo.
+Ver el análisis completo en [OWASP.md](./OWASP.md).
 
 | # | Categoría | Estado | Medida principal |
 |---|-----------|--------|-----------------|
 | A01 | Broken Access Control | ✅ | `@token_required` + `@admin_required` |
-| A02 | Cryptographic Failures | ✅ | bcrypt rounds=12 + JWT HS256 |
-| A03 | Injection | ✅ | Queries parametrizadas con `%s` |
-| A04 | Insecure Design | ✅ | Red Docker segregada + pool |
-| A05 | Security Misconfiguration | ✅ | 7 cabeceras HTTP + no-root |
-| A06 | Vulnerable Components | ✅ | Versiones fijas + Bandit CI |
-| A07 | Authentication Failures | ✅ | Rate limit 5/15min + JWT exp 1h |
-| A08 | Software Integrity | ✅ | Imágenes Docker oficiales |
-| A09 | Security Logging | ✅ | Tabla `audit_log` MySQL |
-| A10 | SSRF | ✅ | `BACKEND_URL` fija en entorno |
+| A02 | Cryptographic Failures | ✅ | bcrypt rounds=12 + JWT HS256 + secrets en `.env` |
+| A03 | Injection | ✅ | Queries parametrizadas con `%s`, nunca concatenación |
+| A04 | Insecure Design | ✅ | Red Docker segregada, solo frontend expuesto |
+| A05 | Security Misconfiguration | ✅ | 7 cabeceras HTTP de seguridad en todas las respuestas |
+| A06 | Vulnerable Components | ✅ | Versiones fijas en `requirements.txt` + Bandit en CI |
+| A07 | Auth Failures | ✅ | Rate limiting 5/15min + JWT exp 1h + timing attack protection |
+| A08 | Software Integrity | ✅ | Imágenes Docker oficiales + CSP + CI/CD obligatorio |
+| A09 | Security Logging | ✅ | Tabla `audit_log` en MySQL con IP, acción y timestamp |
+| A10 | SSRF | ✅ | `BACKEND_URL` fija, nunca suministrada por el usuario |
 
 ---
 
-### 2.7 Pruebas (Unitarias e Integración)
+### 7. Pruebas
 
-**Requisito:** Crear tantos tipos de pruebas como sea posible, mínimo unitarias e integración.
+**Ficheros:** `tests/`
 
-**Ficheros:** `tests/test_backend.py`, `tests/test_backend_extended.py`, `tests/test_frontend.py`, `tests/test_mysql_integration.py`
+El proyecto incluye cuatro niveles de pruebas:
 
-**Tests unitarios** (`test_backend_extended.py`):
-- `TestBcrypt` — 8 tests: hash, verificación, salt aleatorio, contraseña larga
-- `TestJWT` — 8 tests: creación, verificación, expiración, firma manipulada
-- `TestRateLimit` — 5 tests: ventana deslizante, múltiples IPs independientes
-- `TestInputValidation` — 5 tests: truncado de inputs, body vacío, sin JSON
+**Unitarias** — sin base de datos ni red:
+- `TestBcrypt` (8 tests): hash, verificación, salt aleatorio, contraseñas largas.
+- `TestJWT` (8 tests): creación, verificación, expiración, firma manipulada.
+- `TestRateLimit` (5 tests): ventana deslizante, múltiples IPs independientes.
+- `TestInputValidation` (5 tests): truncado de inputs, body vacío, sin JSON.
 
-**Tests de integración con MySQL mockeado** (`test_backend_extended.py`):
-- `TestLoginPOST` — 6 tests: MySQL consultado con username correcto, audit_log escrito, usuario inactivo
-- `TestProjectsPOST` — 8 tests: INSERT con datos exactos, commit llamado, lastrowid al cliente
-- `TestToggleUserPOST` — 5 tests: UPDATE en MySQL, 404 para inexistente, 403 para user
+**Integración con MySQL mockeado:**
+- `TestLoginPOST` (6 tests): MySQL consultado con username correcto, audit_log escrito, usuario inactivo bloqueado.
+- `TestProjectsPOST` (8 tests): INSERT verificado con datos exactos, `db.commit()` llamado, `lastrowid` devuelto.
+- `TestToggleUserPOST` (5 tests): UPDATE en MySQL, 404 para inexistente, 403 para user normal.
 
-**Tests de persistencia simulada** (`test_backend_extended.py`):
-- `TestMySQLPersistenceSimulated` — 5 tests: ciclo POST→GET con BD en memoria, IDs incrementales, audit trail
+**Persistencia simulada en memoria:**
+- `TestMySQLPersistenceSimulated` (5 tests): ciclo completo POST → GET, IDs incrementales, audit trail.
 
-**Tests con MySQL real** (`test_mysql_integration.py`):
-- Ejecutados en GitHub Actions con contenedor MySQL 8.0 real
-- Verifican tablas, bcrypt real, persistencia real, toggle de usuarios, ciclo completo end-to-end
+**Contrato API y seguridad:**
+- `TestSecurityHeaders` (8 tests): las 7 cabeceras HTTP verificadas en respuestas normales y de error.
+- `TestHTTPMethods` (4 tests): métodos no permitidos devuelven 405.
+
+**Pruebas Postman** — ver carpeta [`postman/`](./postman/README.md):
+- 53 tests sobre todos los endpoints reales de la API.
+- Verificación end-to-end con la aplicación corriendo en Docker.
 
 ```bash
+# Ejecutar tests automatizados:
 pip install -r tests/requirements-test.txt
 pytest tests/test_backend.py tests/test_backend_extended.py tests/test_frontend.py -v
 ```
 
 ---
 
-### 2.8 Control de Versiones Git y GitHub
+### 8. Control de versiones con Git y GitHub
 
-**Requisito:** Gestionar versiones con git, abrir forks de nuevas características, merge a main, subir a GitHub.
+**Fichero:** `.gitignore`
 
-**Fichero:** `.gitignore` (excluye `.env`, `__pycache__`, `*.db`)
+El flujo de trabajo sigue la estrategia de ramas por funcionalidad:
 
 ```bash
-# Rama de feature
-git checkout -b feature/nueva-funcionalidad
-git add . && git commit -m "feat: descripción"
+# Crear rama para nueva funcionalidad
+git checkout -b feature/nombre-funcionalidad
 
-# Merge sin fast-forward (mantiene historial)
-git checkout main
-git merge --no-ff feature/nueva-funcionalidad
-git push origin main
+git add .
+git commit -m "feat: descripción del cambio"
+git push origin feature/nombre-funcionalidad
+
+# En GitHub: abrir Pull Request → revisar → merge a main
 ```
+
+El `.gitignore` excluye `.env`, `__pycache__`, `*.db` y otros ficheros que no deben versionarse.
 
 ---
 
-### 2.9 GitHub Actions — CI/CD
-
-**Requisito:** Utilizar herramienta de automatización (GitHub Actions, Jenkins o similar).
+### 9. CI/CD con GitHub Actions
 
 **Fichero:** `.github/workflows/ci.yml`
 
-Pipeline en 4 jobs, activado en push a `main`/`develop` y en Pull Requests:
+El pipeline se activa automáticamente en cada `git push` a `main` o `develop`, y en cada Pull Request:
 
 ```
-push a main
-    │
-    ├── test          pytest unitarios + integración (~2 min)
-    ├── test-mysql    MySQL 8 real como servicio (~3 min)
-    ├── security      Bandit análisis estático (~1 min)
-    │
-    └── [si los 3 pasan] ──► docker build + smoke test ──► deploy
+push a main / PR
+        │
+        ├── Tests y Cobertura       pytest unitarios + integración
+        ├── Tests con MySQL real    contenedor MySQL 8 como servicio
+        ├── Análisis Bandit         análisis estático de seguridad
+        │
+        └── [si los 3 pasan]
+                │
+                ├── Build y Smoke Test Docker    build + arranque completo
+                │
+                └── [solo en main]
+                        │
+                        └── Deploy a Producción
 ```
 
 ---
 
-## 3. Estructura del Proyecto
+## Estructura del proyecto
 
 ```
 Proyecto-PPS/
 ├── backend/
-│   ├── app.py              Flask API + MySQL + JWT + bcrypt
+│   ├── app.py                  API REST: JWT, bcrypt, MySQL, rate limiting
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
-│   ├── app.py              Flask UI
+│   ├── app.py                  UI Flask + rutas proxy API para Postman
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── templates/
 │       ├── base.html
 │       ├── login.html
-│       ├── dashboard.html
-│       ├── admin.html
+│       ├── dashboard.html      Vista diferenciada por rol
+│       ├── admin.html          Panel de administración
 │       └── new_project.html
 ├── mysql/
 │   └── init.sql
 ├── tests/
-│   ├── test_backend.py
-│   ├── test_backend_extended.py
-│   ├── test_frontend.py
-│   ├── test_mysql_integration.py
+│   ├── conftest.py             Configuración de rutas para pytest
+│   ├── test_backend.py         Tests unitarios e integración
+│   ├── test_backend_extended.py  Tests POST y persistencia MySQL
+│   ├── test_frontend.py        Tests frontend con backend mockeado
 │   └── requirements-test.txt
-├── .github/workflows/
-│   └── ci.yml
+├── postman/
+│   ├── README.md               Documentación de pruebas Postman
+│   ├── SecureApp.postman_collection.json
+│   └── SecureApp.postman_environment.json
+├── .github/
+│   └── workflows/
+│       └── ci.yml              Pipeline CI/CD
 ├── docker-compose.yml
 ├── .env.example
 ├── README.md
@@ -272,53 +294,61 @@ Proyecto-PPS/
 
 ---
 
-## 4. Instalación y Puesta en Marcha
+## Instalación y puesta en marcha
 
 ### Requisitos previos
 
-- Docker Desktop (Win/Mac) o Docker Engine + Compose (Linux)
+- Docker Desktop (Windows/Mac) o Docker Engine + Compose Plugin (Linux)
 - Git
-- Puerto 5000 libre
+- Puerto 5000 libre en el host
 
-### Arranque
+### Arranque rápido
 
 ```bash
 git clone https://github.com/Ruben-CEU/Proyecto-PPS.git
 cd Proyecto-PPS
-cp .env.example .env        # editar contraseñas seguras
+
+# Configurar variables de entorno
+cp .env.example .env
+# Editar .env con contraseñas seguras antes de continuar
+
+# Construir y arrancar
 docker compose up --build -d
-# Esperar ~30s a que MySQL inicialice
-docker compose ps           # verificar todos Up (healthy)
-# Abrir http://localhost:5000
+
+# Verificar que los 3 contenedores están sanos
+docker compose ps
+
+# Acceder a la aplicación
+# http://localhost:5000
 ```
 
 ### Credenciales de demo
 
 | Usuario | Contraseña | Rol |
 |---------|-----------|-----|
-| `admin` | `Admin1234!` | Administrador |
-| `usuario` | `User1234!` | Usuario normal |
+| `admin` | `Admin1234!` | Administrador — interfaz morada |
+| `usuario` | `User1234!` | Usuario normal — interfaz azul |
 
 ### Comandos útiles
 
 ```bash
-docker compose logs -f                  # logs en tiempo real
-docker compose logs -f backend          # solo logs del backend
-docker compose down -v                  # borrar TODO incluidos datos MySQL
-docker exec secureapp-mysql mysql ...   # acceso directo a MySQL
-pytest tests/ -v                        # ejecutar tests
+docker compose logs -f                    # Logs en tiempo real (todos los servicios)
+docker compose logs -f backend            # Solo logs del backend
+docker compose restart backend            # Reiniciar backend (limpia rate limiting)
+docker compose down -v                    # Parar y eliminar datos de MySQL
+pytest tests/ -v                          # Ejecutar suite de tests
 ```
 
 ---
 
-## 5. Tecnologías Utilizadas
+## Tecnologías
 
-| Categoría | Tecnología |
-|-----------|-----------|
-| Backend | Python 3.12, Flask 3.0, PyJWT 2.8, bcrypt 4.1, mysql-connector-python 8.4 |
-| Frontend | Python 3.12, Flask 3.0, Requests 2.32, Jinja2 |
-| Base de datos | MySQL 8.0, pool de conexiones, 3 tablas |
+| Capa | Tecnología |
+|------|-----------|
+| Backend | Python 3.12, Flask 3.0.3, PyJWT 2.8.0, bcrypt 4.1.3, mysql-connector-python 8.4.0 |
+| Frontend | Python 3.12, Flask 3.0.3, Requests 2.32.3, Jinja2 |
+| Base de datos | MySQL 8.0 — 3 tablas, pool de conexiones, volumen persistente |
 | Infraestructura | Docker 24+, Docker Compose V2, red bridge privada |
-| CI/CD | GitHub Actions (test → security → docker → deploy) |
-| Testing | pytest, unittest.mock, responses |
+| CI/CD | GitHub Actions — 5 jobs: test, test-mysql, security, docker, deploy |
+| Testing | pytest, unittest.mock, Postman/Newman |
 | Seguridad | JWT HS256, bcrypt rounds=12, OWASP Top 10 2025, 7 cabeceras HTTP |
