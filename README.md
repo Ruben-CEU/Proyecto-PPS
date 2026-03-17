@@ -205,7 +205,7 @@ El proyecto incluye cuatro niveles de pruebas:
 - `TestSecurityHeaders` (8 tests): las 7 cabeceras HTTP verificadas en respuestas normales y de error.
 - `TestHTTPMethods` (4 tests): métodos no permitidos devuelven 405.
 
-**Pruebas Postman** — ver carpeta [`postman/`](./postman/README.md):
+**Pruebas Postman** — ver carpeta [`postman/`](https://github.com/Ruben-CEU/Proyecto-PPS/tree/feature/postman-tests):
 - 53 tests sobre todos los endpoints reales de la API.
 - Verificación end-to-end con la aplicación corriendo en Docker.
 
