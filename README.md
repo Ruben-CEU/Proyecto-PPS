@@ -8,7 +8,7 @@ Documentación de la colección de tests Postman para la API REST de SecureApp.
 
 **53 / 53 tests pasados ✅** — 0 fallos · Tiempo medio de respuesta: 32ms
 
-![Resultados de la ejecución completa de la colección Postman](./Captura%20de%20pantalla%202026-03-16%20190012.png)
+![Resultados de la ejecución](https://github.com/Ruben-CEU/Proyecto-PPS/blob/feature/postman-tests/resuldatos.png?raw=true)
 
 ---
 
