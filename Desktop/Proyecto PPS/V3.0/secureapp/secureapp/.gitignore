@@ -1,9 +1,0 @@
-.env
-__pycache__/
-*.pyc
-*.db
-.pytest_cache/
-htmlcov/
-.coverage
-venv/
-.venv/
