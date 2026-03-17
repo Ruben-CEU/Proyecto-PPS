@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SecureApp{% endblock %}
+
+{% block extra_style %}
+<style>
+{% if role == 'admin' %}
+:root { --primary:#7c3aed; --bg:#f5f3ff; --header-bg:#4c1d95; --badge-bg:#7c3aed; }
+.banner { background: linear-gradient(135deg,#7c3aed,#4c1d95); }
+{% else %}
+:root { --primary:#2563eb; --bg:#f1f5f9; --header-bg:#1e3a5f; --badge-bg:#3b82f6; }
+.banner { background: linear-gradient(135deg,#2563eb,#1e3a5f); }
+{% endif %}
+.banner { color:white; border-radius:14px; padding:1.6rem 2rem; margin-bottom:1.5rem; }
+.banner h2 { font-size:1.5rem; margin-bottom:.3rem; }
+.banner p  { opacity:.85; font-size:.92rem; }
+.section-title { font-size:1rem; font-weight:700; color:#334155; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+.admin-box { border:2px solid var(--primary); background:var(--bg); }
+</style>
+{% endblock %}
+
+{% block header_title %}
+{% if role == 'admin' %}⚡ SecureApp — Administración{% else %}🔒 SecureApp{% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="banner">
+    <h2>{{ "⚡ Hola, " if role == 'admin' else "👋 Bienvenido, " }}{{ username }}!</h2>
+    <p>
+        {% if role == 'admin' %}
+        Tienes acceso completo. Puedes gestionar usuarios, proyectos y ver los logs del sistema.
+        {% else %}
+        Consulta los proyectos disponibles en el sistema.
+        {% endif %}
+    </p>
+</div>
+
+{% if role == 'admin' and stats %}
+<!-- Estadísticas desde MySQL — solo para admin -->
+<div class="grid-4">
+    <div class="stat-card">
+        <div class="num">{{ stats.users }}</div>
+        <div class="label">Usuarios</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ stats.projects }}</div>
+        <div class="label">Proyectos</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ stats.audit_log_entries }}</div>
+        <div class="label">Entradas de log</div>
+    </div>
+    <div class="stat-card" style="{% if stats.failed_logins_1h > 3 %}border-left:4px solid #ef4444{% endif %}">
+        <div class="num" style="{% if stats.failed_logins_1h > 3 %}color:#ef4444{% endif %}">
+            {{ stats.failed_logins_1h }}
+        </div>
+        <div class="label">Fallos login (1h)</div>
+    </div>
+</div>
+{% else %}
+<!-- Stats básicas para usuario normal -->
+<div class="grid-3">
+    <div class="stat-card">
+        <div class="num">{{ projects | length }}</div>
+        <div class="label">Proyectos</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ projects | selectattr('status','equalto','activo') | list | length }}</div>
+        <div class="label">Activos</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ role | upper }}</div>
+        <div class="label">Tu rol</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Tabla de proyectos desde MySQL -->
+<div class="card">
+    <div class="section-title">
+        📋 Proyectos
+        {% if role == 'admin' %}
+        <a href="{{ url_for('new_project') }}" class="btn btn-primary btn-sm" style="margin-left:auto">＋ Nuevo</a>
+        {% endif %}
+    </div>
+    {% if projects %}
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Estado</th>
+                <th>Responsable</th>
+                <th>Creado</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for p in projects %}
+        <tr>
+            <td style="color:#94a3b8">#{{ p.id }}</td>
+            <td><strong>{{ p.name }}</strong></td>
+            <td style="color:#64748b;font-size:.82rem">{{ p.description or '—' }}</td>
+            <td>
+                <span class="tag tag-{{ p.status | replace(' ','') | replace('en revisión','revision') }}">
+                    {{ p.status }}
+                </span>
+            </td>
+            <td>{{ p.owner or '—' }}</td>
+            <td style="color:#94a3b8;font-size:.8rem">{{ p.created_at[:10] if p.created_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#94a3b8;text-align:center;padding:2rem">No hay proyectos en la base de datos.</p>
+    {% endif %}
+</div>
+
+{% if role == 'admin' %}
+<div class="card admin-box">
+    <div class="section-title">⚙️ Herramientas de administración</div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <a href="{{ url_for('admin') }}"       class="btn btn-primary">👥 Gestionar usuarios</a>
+        <a href="{{ url_for('new_project') }}" class="btn btn-primary">📋 Crear proyecto</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
